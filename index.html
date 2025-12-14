@@ -166,328 +166,179 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        // Глобальные переменные
-        let socket = null;
-        let peerConnection = null;
-        let localStream = null;
-        let remoteStream = null;
-        let myId = 'user_' + Math.random().toString(36).substr(2, 9);
-        let isInCall = false;
-        
-        // Логирование
-        function logMessage(message, type = 'info') {
-            const logEl = document.getElementById('log');
-            const item = document.createElement('div');
-            item.className = `log-item log-${type}`;
-            item.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logEl.appendChild(item);
-            logEl.scrollTop = logEl.scrollHeight;
-            console.log(message);
-        }
-        
-        // Обновление статуса
-        function updateStatus(message, type = '') {
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = message;
-            statusEl.className = 'status';
-            if (type) statusEl.classList.add(`status-${type}`);
-            logMessage(`Статус: ${message}`, 'info');
-        }
-        
-        // Начало работы
-        async function startApp() {
-            try {
-                updateStatus('Подключаюсь к серверу...', 'connecting');
-                
-                // Подключаемся к Socket.IO
-                socket = io();
-                
-                // Регистрируемся на сервере
-                socket.emit('register', myId);
-                document.getElementById('myId').textContent = myId;
-                
-                // Запрашиваем микрофон
-                updateStatus('Запрашиваю доступ к микрофону...', 'connecting');
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
-                });
-                
-                // Показываем локальный звук
-                document.getElementById('localAudio').srcObject = localStream;
-                
-                // Настройка обработчиков событий
-                setupSocketHandlers();
-                
-                // Активируем кнопки
-                document.getElementById('startBtn').disabled = true;
-                document.getElementById('callBtn').disabled = false;
-                
-                updateStatus('Готов к звонкам!', 'connected');
-                logMessage('✅ Приложение готово. ID: ' + myId, 'success');
-                
-            } catch (error) {
-                updateStatus('Ошибка: ' + error.message);
-                logMessage(`❌ Ошибка: ${error.message}`, 'error');
-            }
-        }
-        
-        // Настройка обработчиков Socket.IO
-        function setupSocketHandlers() {
-            // Входящий звонок
+   <script src="/socket.io/socket.io.js"></script>
+<script>
+    // Простейший WebRTC звонок
+    let socket;
+    let pc;
+    let localStream;
+    
+    // ID пользователя
+    const myId = 'user_' + Math.floor(Math.random() * 1000);
+    document.getElementById('myId').textContent = myId;
+    
+    // Начать
+    async function start() {
+        try {
+            // Подключаемся
+            socket = io();
+            socket.emit('register', myId);
+            
+            // Микрофон
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            document.getElementById('localAudio').srcObject = localStream;
+            
+            // События
             socket.on('call:incoming', async (data) => {
-                logMessage(`📞 Входящий звонок от ${data.caller}`, 'info');
-                
-                if (isInCall) {
-                    logMessage('Уже в звонке, отклоняю...', 'info');
-                    socket.emit('call:end', { to: data.from });
-                    return;
-                }
-                
-                const accept = confirm(`${data.caller} звонит вам. Принять звонок?`);
-                if (accept) {
-                    await acceptIncomingCall(data);
-                } else {
-                    socket.emit('call:end', { to: data.from });
-                    logMessage('Звонок отклонен', 'info');
+                if (confirm(data.caller + ' звонит. Принять?')) {
+                    await createAnswer(data);
                 }
             });
             
-            // Ответ на звонок
             socket.on('call:answered', async (data) => {
-                logMessage('✅ Собеседник принял звонок', 'success');
-                
-                if (peerConnection) {
-                    try {
-                        await peerConnection.setRemoteDescription(
-                            new RTCSessionDescription(data.answer)
-                        );
-                        updateStatus('В разговоре', 'in-call');
-                        isInCall = true;
-                        document.getElementById('hangupBtn').disabled = false;
-                    } catch (error) {
-                        logMessage(`Ошибка установки ответа: ${error}`, 'error');
-                    }
+                if (pc) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
                 }
             });
             
-            // ICE кандидаты
             socket.on('call:ice', (data) => {
-                if (peerConnection && peerConnection.remoteDescription) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
-                        .catch(err => logMessage(`Ошибка ICE: ${err}`, 'error'));
+                if (pc) {
+                    pc.addIceCandidate(new RTCIceCandidate(data.candidate));
                 }
             });
             
-            // Звонок завершен
-            socket.on('call:ended', () => {
-                logMessage('❌ Собеседник завершил звонок', 'info');
-                hangupCall();
-                alert('Собеседник завершил звонок');
-            });
+            alert('✅ Готов! Твой ID: ' + myId);
             
-            // Ошибки соединения
-            socket.on('connect_error', (error) => {
-                logMessage(`Ошибка подключения: ${error.message}`, 'error');
-                updateStatus('Ошибка подключения к серверу');
-            });
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
         }
+    }
+    
+    // Позвонить
+    async function callUser() {
+        const targetId = prompt('ID собеседника:');
+        if (!targetId) return;
         
-        // Совершить звонок
-        async function makeCall() {
-            const targetId = prompt('Введите ID собеседника (скопируйте с другого устройства):');
-            if (!targetId) return;
-            
-            try {
-                updateStatus('Устанавливаю соединение...', 'calling');
-                logMessage(`📞 Звоню пользователю ${targetId}`, 'info');
-                
-                // Создаем PeerConnection
-                peerConnection = new RTCPeerConnection({
-                    iceServers: [
-        // STUN серверы Google
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' },
-        
-        // Бесплатные TURN серверы
-                        {
-                            urls: 'turn:openrelay.metered.ca:80',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:443',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        },
-                        {
-                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        }
-                    ],
-                    iceTransportPolicy: 'all',
-                    bundlePolicy: 'max-bundle',
-                    rtcpMuxPolicy: 'require'
-                });
-                
-                // Добавляем локальные треки
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                });
-                
-                // Получаем удаленный поток
-                peerConnection.ontrack = (event) => {
-                    logMessage('🎧 Получен аудиопоток собеседника', 'success');
-                    remoteStream = event.streams[0];
-                    document.getElementById('remoteAudio').srcObject = remoteStream;
-                };
-                
-                // ICE кандидаты
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate && socket) {
-                        socket.emit('call:ice', {
-                            to: targetId,
-                            candidate: event.candidate
-                        });
-                    }
-                };
-                peerConnection.oniceconnectionstatechange = () => {
-                    logMessage(`ICE состояние: ${peerConnection.iceConnectionState}`, 'info');
-                    if (peerConnection.iceConnectionState === 'connected' || 
-                        peerConnection.iceConnectionState === 'completed') {
-                        logMessage('✅ Соединение установлено!', 'success');
-                    }
-                    if (peerConnection.iceConnectionState === 'failed' ||
-                        peerConnection.iceConnectionState === 'disconnected') {
-                        logMessage('❌ Проблема с соединением', 'error');
+        // Создаем соединение с публичными серверами
+        pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:global.stun.twilio.com:3478?transport=udp" },
+                {
+                    urls: "turn:global.relay.metered.ca:80",
+                    username: "f9caf2d65e3b85f0c3e0e4b8",
+                    credential: "c2Y3gX3DDuZLl9QY"
+                },
+                {
+                    urls: "turn:global.relay.metered.ca:80?transport=tcp",
+                    username: "f9caf2d65e3b85f0c3e0e4b8",
+                    credential: "c2Y3gX3DDuZLl9QY"
+                },
+                {
+                    urls: "turn:global.relay.metered.ca:443",
+                    username: "f9caf2d65e3b85f0c3e0e4b8",
+                    credential: "c2Y3gX3DDuZLl9QY"
+                },
+                {
+                    urls: "turn:global.relay.metered.ca:443?transport=tcp",
+                    username: "f9caf2d65e3b85f0c3e0e4b8",
+                    credential: "c2Y3gX3DDuZLl9QY"
                 }
-                };
-                // Создаем оффер
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                
-                // Отправляем оффер
-                socket.emit('call:offer', {
-                    to: targetId,
-                    offer: peerConnection.localDescription,
-                    caller: myId
-                });
-                
-                updateStatus('Звоню...', 'calling');
-                document.getElementById('callBtn').disabled = true;
-                document.getElementById('hangupBtn').disabled = false;
-                
-                logMessage('Ожидание ответа от собеседника...', 'info');
-                
-            } catch (error) {
-                logMessage(`❌ Ошибка звонка: ${error.message}`, 'error');
-                updateStatus('Ошибка звонка');
-            }
-        }
-        
-        // Принять входящий звонок
-        async function acceptIncomingCall(data) {
-            try {
-                updateStatus('Принимаю звонок...', 'calling');
-                logMessage(`Принимаю звонок от ${data.from}`, 'info');
-                
-                // Создаем PeerConnection
-                peerConnection = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' }
-                    ]
-                });
-                
-                // Добавляем локальные треки
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                });
-                
-                // Получаем удаленный поток
-                peerConnection.ontrack = (event) => {
-                    logMessage('🎧 Получен аудиопоток собеседника', 'success');
-                    remoteStream = event.streams[0];
-                    document.getElementById('remoteAudio').srcObject = remoteStream;
-                };
-                
-                // ICE кандидаты
-                peerConnection.onicecandidate = (event) => {
-                    if (event.candidate && socket) {
-                        socket.emit('call:ice', {
-                            to: data.from,
-                            candidate: event.candidate
-                        });
-                    }
-                };
-                
-                // Устанавливаем удаленный оффер
-                await peerConnection.setRemoteDescription(
-                    new RTCSessionDescription(data.offer)
-                );
-                
-                // Создаем ответ
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                
-                // Отправляем ответ
-                socket.emit('call:answer', {
-                    to: data.from,
-                    answer: answer
-                });
-                
-                updateStatus('В разговоре', 'in-call');
-                isInCall = true;
-                document.getElementById('callBtn').disabled = true;
-                document.getElementById('hangupBtn').disabled = false;
-                
-                logMessage('✅ Звонок установлен', 'success');
-                
-            } catch (error) {
-                logMessage(`❌ Ошибка принятия звонка: ${error.message}`, 'error');
-                updateStatus('Ошибка');
-            }
-        }
-        
-        // Завершить звонок
-        function hangupCall() {
-            logMessage('Завершаю звонок...', 'info');
-            
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-            
-            if (remoteStream) {
-                document.getElementById('remoteAudio').srcObject = null;
-                remoteStream = null;
-            }
-            
-            isInCall = false;
-            document.getElementById('callBtn').disabled = false;
-            document.getElementById('hangupBtn').disabled = true;
-            
-            updateStatus('Готов к звонкам', 'connected');
-            logMessage('Звонок завершен', 'info');
-        }
-        
-        // Обработка закрытия страницы
-        window.addEventListener('beforeunload', () => {
-            if (socket) {
-                socket.disconnect();
-            }
-            hangupCall();
+            ]
         });
-    </script>
+        
+        // Локальный поток
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
+        });
+        
+        // Удаленный поток
+        pc.ontrack = (event) => {
+            document.getElementById('remoteAudio').srcObject = event.streams[0];
+            alert('🎧 Соединение установлено! Говорите в микрофон');
+        };
+        
+        // ICE
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('call:ice', {
+                    to: targetId,
+                    candidate: event.candidate
+                });
+            }
+        };
+        
+        // Оффер
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        socket.emit('call:offer', {
+            to: targetId,
+            offer: pc.localDescription,
+            caller: myId
+        });
+        
+        alert('📞 Звоню... Скажите собеседнику принять звонок');
+    }
+    
+    // Принять звонок
+    async function createAnswer(data) {
+        pc = new RTCPeerConnection({
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:global.stun.twilio.com:3478?transport=udp" },
+                {
+                    urls: "turn:global.relay.metered.ca:80",
+                    username: "f9caf2d65e3b85f0c3e0e4b8",
+                    credential: "c2Y3gX3DDuZLl9QY"
+                }
+            ]
+        });
+        
+        // Локальный поток
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
+        });
+        
+        // Удаленный поток
+        pc.ontrack = (event) => {
+            document.getElementById('remoteAudio').srcObject = event.streams[0];
+            alert('🎧 Соединение установлено! Говорите в микрофон');
+        };
+        
+        // ICE
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('call:ice', {
+                    to: data.from,
+                    candidate: event.candidate
+                });
+            }
+        };
+        
+        // Устанавливаем оффер
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        
+        // Создаем ответ
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        
+        // Отправляем ответ
+        socket.emit('call:answer', {
+            to: data.from,
+            answer: answer
+        });
+    }
+    
+    // Завершить
+    function hangup() {
+        if (pc) {
+            pc.close();
+            pc = null;
+        }
+        document.getElementById('remoteAudio').srcObject = null;
+        alert('Звонок завершен');
+    }
+</script>
 </body>
 </html>
