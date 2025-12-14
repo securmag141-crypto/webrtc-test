@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .user { background: #f0f0f0; padding: 10px; margin: 5px; }
+        button { margin: 5px; padding: 10px; }
+        #localVideo, #remoteVideo { width: 300px; }
+    </style>
+</head>
+<body>
+    <h2>WebRTC Audio Test</h2>
+    
+    <div>
+        <h3>Твой ID: <span id="myId">-</span></h3>
+        <button onclick="start()">🎤 Начать</button>
+        <button onclick="callUser()">📞 Позвонить</button>
+        <button onclick="hangup()">❌ Завершить</button>
+    </div>
+    
+    <div>
+        <h3>Онлайн:</h3>
+        <div id="users"></div>
+    </div>
+    
+    <div>
+        <audio id="localAudio" controls></audio>
+        <audio id="remoteAudio" controls></audio>
+    </div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket;
+        let peerConnection;
+        let localStream;
+        let users = {};
+        let myId = 'user_' + Math.random().toString(36).substr(2, 9);
+        
+        function start() {
+            socket = io();
+            socket.emit('register', myId);
+            document.getElementById('myId').textContent = myId;
+            
+            socket.on('call:incoming', async (data) => {
+                if (confirm(`${data.caller} звонит. Принять?`)) {
+                    await acceptCall(data);
+                }
+            });
+            
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    document.getElementById('localAudio').srcObject = stream;
+                });
+        }
+        
+        function callUser() {
+            const targetId = prompt('Введите ID пользователя:');
+            if (!targetId) return;
+            
+            peerConnection = new RTCPeerConnection();
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+            
+            peerConnection.createOffer()
+                .then(offer => peerConnection.setLocalDescription(offer))
+                .then(() => {
+                    socket.emit('call:offer', {
+                        to: targetId,
+                        offer: peerConnection.localDescription,
+                        caller: myId
+                    });
+                });
+        }
+        
+        async function acceptCall(data) {
+            peerConnection = new RTCPeerConnection();
+            
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, stream);
+            });
+            
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            socket.emit('call:answer', {
+                to: data.from,
+                answer: answer
+            });
+        }
+        
+        function hangup() {
+            if (peerConnection) peerConnection.close();
+        }
+    </script>
+</body>
+</html>
