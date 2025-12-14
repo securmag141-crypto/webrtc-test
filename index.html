@@ -1,201 +1,460 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebRTC Test</title>
+    <title>WebRTC Audio Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: Arial; padding: 20px; }
-        .user { background: #f0f0f0; padding: 10px; margin: 5px; }
-        button { margin: 5px; padding: 10px; }
-        #localVideo, #remoteVideo { width: 300px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #00d1c0;
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .id-display {
+            background: rgba(0, 209, 192, 0.2);
+            border: 2px solid #00d1c0;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+            font-family: monospace;
+            font-size: 1.2rem;
+            word-break: break-all;
+        }
+        .btn {
+            background: #00d1c0;
+            color: #0a1a2f;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 5px;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 209, 192, 0.3);
+        }
+        .btn-danger {
+            background: #ff4757;
+            color: white;
+        }
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .audio-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .audio-box {
+            flex: 1;
+            min-width: 250px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        .audio-box h3 {
+            margin-bottom: 10px;
+            color: #00d1c0;
+        }
+        audio {
+            width: 100%;
+            border-radius: 5px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+        .status-connecting { background: #ffa502; color: #2f3542; }
+        .status-connected { background: #2ed573; color: white; }
+        .status-calling { background: #1e90ff; color: white; }
+        .status-in-call { background: #3742fa; color: white; }
+        .log {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .log-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #00d1c0;
+        }
+        .log-error { border-left-color: #ff4757; color: #ff6b81; }
+        .log-success { border-left-color: #2ed573; color: #7bed9f; }
+        .log-info { border-left-color: #1e90ff; color: #70a1ff; }
     </style>
 </head>
 <body>
-    <h2>WebRTC Audio Test</h2>
-    
-    <div>
-        <h3>Твой ID: <span id="myId">-</span></h3>
-        <button onclick="start()">🎤 Начать</button>
-        <button onclick="callUser()">📞 Позвонить</button>
-        <button onclick="hangup()">❌ Завершить</button>
-    </div>
-    
-    <div>
-        <h3>Онлайн:</h3>
-        <div id="users"></div>
-    </div>
-    
-    <div>
-        <audio id="localAudio" controls></audio>
-        <audio id="remoteAudio" controls></audio>
-    </div>
-    
-   <script src="/socket.io/socket.io.js"></script>
-<script>
-    let socket;
-    let peerConnection;
-    let localStream;
-    let remoteStream;
-    let myId = 'user_' + Math.random().toString(36).substr(2, 9);
-    
-    async function start() {
-        // Подключаемся к серверу
-        socket = io();
-        socket.emit('register', myId);
-        document.getElementById('myId').textContent = myId;
+    <div class="container">
+        <h1>🎤 WebRTC Audio Call Test</h1>
         
-        // Запрашиваем микрофон
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: true 
-            });
-            document.getElementById('localAudio').srcObject = localStream;
-            console.log('✅ Микрофон подключен');
-        } catch(err) {
-            console.error('❌ Ошибка микрофона:', err);
-            alert('Нет доступа к микрофону');
-            return;
+        <div class="panel">
+            <h2>Твой идентификатор:</h2>
+            <div class="id-display" id="myId">Нажмите "Начать"</div>
+            
+            <div style="text-align: center;">
+                <button class="btn" onclick="startApp()" id="startBtn">🎤 1. Начать</button>
+                <button class="btn" onclick="makeCall()" id="callBtn" disabled>📞 2. Позвонить</button>
+                <button class="btn btn-danger" onclick="hangupCall()" id="hangupBtn" disabled>❌ 3. Завершить</button>
+            </div>
+            
+            <div id="status" class="status"></div>
+        </div>
+        
+        <div class="audio-container">
+            <div class="audio-box">
+                <h3>🎤 Ваш микрофон:</h3>
+                <audio id="localAudio" controls></audio>
+            </div>
+            <div class="audio-box">
+                <h3>🔊 Собеседник:</h3>
+                <audio id="remoteAudio" controls></audio>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h3>📋 Инструкция:</h3>
+            <ol style="margin-left: 20px; line-height: 1.6;">
+                <li>Открой эту страницу на <strong>двух устройствах</strong> (телефон + компьютер)</li>
+                <li>На каждом устройстве нажмите <strong>"🎤 1. Начать"</strong></li>
+                <li>Скопируйте <strong>ID с первого устройства</strong></li>
+                <li>На втором устройстве вставьте ID и нажмите <strong>"📞 2. Позвонить"</strong></li>
+                <li>На первом устройстве примите вызов в появившемся окне</li>
+                <li>Говорите в микрофон - должны слышать друг друга</li>
+            </ol>
+        </div>
+        
+        <div class="log" id="log">
+            <div class="log-item log-info">Готов к тестированию...</div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Глобальные переменные
+        let socket = null;
+        let peerConnection = null;
+        let localStream = null;
+        let remoteStream = null;
+        let myId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let isInCall = false;
+        
+        // Логирование
+        function logMessage(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const item = document.createElement('div');
+            item.className = `log-item log-${type}`;
+            item.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(item);
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
         }
         
-        // Обработка входящих звонков
-        socket.on('call:incoming', async (data) => {
-            if (confirm(`${data.caller} звонит. Принять?`)) {
-                await acceptCall(data);
-            } else {
-                socket.emit('call:end', { to: data.from });
-            }
-        });
+        // Обновление статуса
+        function updateStatus(message, type = '') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status';
+            if (type) statusEl.classList.add(`status-${type}`);
+            logMessage(`Статус: ${message}`, 'info');
+        }
         
-        socket.on('call:answered', async (data) => {
-            if (peerConnection) {
-                await peerConnection.setRemoteDescription(
-                    new RTCSessionDescription(data.answer)
-                );
-                console.log('✅ Звонок принят');
-            }
-        });
-        
-        socket.on('call:ice', (data) => {
-            if (peerConnection) {
-                peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-            }
-        });
-        
-        socket.on('call:ended', () => {
-            console.log('❌ Звонок завершен');
-            hangup();
-            alert('Собеседник завершил звонок');
-        });
-    }
-    
-    function callUser() {
-        const targetId = prompt('Введите ID пользователя для звонка:');
-        if (!targetId) return;
-        
-        // Создаем PeerConnection с ICE серверами
-        peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        
-        // Добавляем локальный поток
-        localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-        });
-        
-        // Получаем удаленный поток
-        peerConnection.ontrack = (event) => {
-            console.log('🎧 Получен удаленный поток');
-            remoteStream = event.streams[0];
-            document.getElementById('remoteAudio').srcObject = remoteStream;
-        };
-        
-        // ICE кандидаты
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('call:ice', {
-                    to: targetId,
-                    candidate: event.candidate
+        // Начало работы
+        async function startApp() {
+            try {
+                updateStatus('Подключаюсь к серверу...', 'connecting');
+                
+                // Подключаемся к Socket.IO
+                socket = io();
+                
+                // Регистрируемся на сервере
+                socket.emit('register', myId);
+                document.getElementById('myId').textContent = myId;
+                
+                // Запрашиваем микрофон
+                updateStatus('Запрашиваю доступ к микрофону...', 'connecting');
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
+                
+                // Показываем локальный звук
+                document.getElementById('localAudio').srcObject = localStream;
+                
+                // Настройка обработчиков событий
+                setupSocketHandlers();
+                
+                // Активируем кнопки
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('callBtn').disabled = false;
+                
+                updateStatus('Готов к звонкам!', 'connected');
+                logMessage('✅ Приложение готово. ID: ' + myId, 'success');
+                
+            } catch (error) {
+                updateStatus('Ошибка: ' + error.message);
+                logMessage(`❌ Ошибка: ${error.message}`, 'error');
             }
-        };
+        }
         
-        // Создаем оффер
-        peerConnection.createOffer()
-            .then(offer => peerConnection.setLocalDescription(offer))
-            .then(() => {
+        // Настройка обработчиков Socket.IO
+        function setupSocketHandlers() {
+            // Входящий звонок
+            socket.on('call:incoming', async (data) => {
+                logMessage(`📞 Входящий звонок от ${data.caller}`, 'info');
+                
+                if (isInCall) {
+                    logMessage('Уже в звонке, отклоняю...', 'info');
+                    socket.emit('call:end', { to: data.from });
+                    return;
+                }
+                
+                const accept = confirm(`${data.caller} звонит вам. Принять звонок?`);
+                if (accept) {
+                    await acceptIncomingCall(data);
+                } else {
+                    socket.emit('call:end', { to: data.from });
+                    logMessage('Звонок отклонен', 'info');
+                }
+            });
+            
+            // Ответ на звонок
+            socket.on('call:answered', async (data) => {
+                logMessage('✅ Собеседник принял звонок', 'success');
+                
+                if (peerConnection) {
+                    try {
+                        await peerConnection.setRemoteDescription(
+                            new RTCSessionDescription(data.answer)
+                        );
+                        updateStatus('В разговоре', 'in-call');
+                        isInCall = true;
+                        document.getElementById('hangupBtn').disabled = false;
+                    } catch (error) {
+                        logMessage(`Ошибка установки ответа: ${error}`, 'error');
+                    }
+                }
+            });
+            
+            // ICE кандидаты
+            socket.on('call:ice', (data) => {
+                if (peerConnection && peerConnection.remoteDescription) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+                        .catch(err => logMessage(`Ошибка ICE: ${err}`, 'error'));
+                }
+            });
+            
+            // Звонок завершен
+            socket.on('call:ended', () => {
+                logMessage('❌ Собеседник завершил звонок', 'info');
+                hangupCall();
+                alert('Собеседник завершил звонок');
+            });
+            
+            // Ошибки соединения
+            socket.on('connect_error', (error) => {
+                logMessage(`Ошибка подключения: ${error.message}`, 'error');
+                updateStatus('Ошибка подключения к серверу');
+            });
+        }
+        
+        // Совершить звонок
+        async function makeCall() {
+            const targetId = prompt('Введите ID собеседника (скопируйте с другого устройства):');
+            if (!targetId) return;
+            
+            try {
+                updateStatus('Устанавливаю соединение...', 'calling');
+                logMessage(`📞 Звоню пользователю ${targetId}`, 'info');
+                
+                // Создаем PeerConnection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ]
+                });
+                
+                // Добавляем локальные треки
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Получаем удаленный поток
+                peerConnection.ontrack = (event) => {
+                    logMessage('🎧 Получен аудиопоток собеседника', 'success');
+                    remoteStream = event.streams[0];
+                    document.getElementById('remoteAudio').srcObject = remoteStream;
+                };
+                
+                // ICE кандидаты
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate && socket) {
+                        socket.emit('call:ice', {
+                            to: targetId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+                
+                // Создаем оффер
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                // Отправляем оффер
                 socket.emit('call:offer', {
                     to: targetId,
                     offer: peerConnection.localDescription,
                     caller: myId
                 });
-                console.log('📞 Звонок отправлен');
-            })
-            .catch(err => console.error('Ошибка звонка:', err));
-    }
-    
-    async function acceptCall(data) {
-        // Создаем PeerConnection
-        peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        
-        // Добавляем локальный поток
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, stream);
-        });
-        
-        // Получаем удаленный поток
-        peerConnection.ontrack = (event) => {
-            console.log('🎧 Получен удаленный поток');
-            remoteStream = event.streams[0];
-            document.getElementById('remoteAudio').srcObject = remoteStream;
-        };
-        
-        // ICE кандидаты
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                socket.emit('call:ice', {
-                    to: data.from,
-                    candidate: event.candidate
-                });
+                
+                updateStatus('Звоню...', 'calling');
+                document.getElementById('callBtn').disabled = true;
+                document.getElementById('hangupBtn').disabled = false;
+                
+                logMessage('Ожидание ответа от собеседника...', 'info');
+                
+            } catch (error) {
+                logMessage(`❌ Ошибка звонка: ${error.message}`, 'error');
+                updateStatus('Ошибка звонка');
             }
-        };
+        }
         
-        // Устанавливаем удаленный оффер
-        await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(data.offer)
-        );
+        // Принять входящий звонок
+        async function acceptIncomingCall(data) {
+            try {
+                updateStatus('Принимаю звонок...', 'calling');
+                logMessage(`Принимаю звонок от ${data.from}`, 'info');
+                
+                // Создаем PeerConnection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ]
+                });
+                
+                // Добавляем локальные треки
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Получаем удаленный поток
+                peerConnection.ontrack = (event) => {
+                    logMessage('🎧 Получен аудиопоток собеседника', 'success');
+                    remoteStream = event.streams[0];
+                    document.getElementById('remoteAudio').srcObject = remoteStream;
+                };
+                
+                // ICE кандидаты
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate && socket) {
+                        socket.emit('call:ice', {
+                            to: data.from,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+                
+                // Устанавливаем удаленный оффер
+                await peerConnection.setRemoteDescription(
+                    new RTCSessionDescription(data.offer)
+                );
+                
+                // Создаем ответ
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                // Отправляем ответ
+                socket.emit('call:answer', {
+                    to: data.from,
+                    answer: answer
+                });
+                
+                updateStatus('В разговоре', 'in-call');
+                isInCall = true;
+                document.getElementById('callBtn').disabled = true;
+                document.getElementById('hangupBtn').disabled = false;
+                
+                logMessage('✅ Звонок установлен', 'success');
+                
+            } catch (error) {
+                logMessage(`❌ Ошибка принятия звонка: ${error.message}`, 'error');
+                updateStatus('Ошибка');
+            }
+        }
         
-        // Создаем ответ
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
+        // Завершить звонок
+        function hangupCall() {
+            logMessage('Завершаю звонок...', 'info');
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            if (remoteStream) {
+                document.getElementById('remoteAudio').srcObject = null;
+                remoteStream = null;
+            }
+            
+            isInCall = false;
+            document.getElementById('callBtn').disabled = false;
+            document.getElementById('hangupBtn').disabled = true;
+            
+            updateStatus('Готов к звонкам', 'connected');
+            logMessage('Звонок завершен', 'info');
+        }
         
-        // Отправляем ответ
-        socket.emit('call:answer', {
-            to: data.from,
-            answer: answer
+        // Обработка закрытия страницы
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.disconnect();
+            }
+            hangupCall();
         });
-        
-        console.log('✅ Звонок принят');
-    }
-    
-    function hangup() {
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
-        }
-        if (remoteStream) {
-            document.getElementById('remoteAudio').srcObject = null;
-            remoteStream = null;
-        }
-        console.log('❌ Звонок завершен');
-    }
-</script>
+    </script>
 </body>
 </html>
