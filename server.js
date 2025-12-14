@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Раздаем статические файлы из текущей папки
+// Статические файлы
 app.use(express.static(__dirname));
 
 // Сигнальный сервер для звонков
@@ -42,23 +42,28 @@ io.on('connection', (socket) => {
   
   socket.on('call:answer', (data) => {
     const { to, answer } = data;
+    console.log(`✅ ${socket.userId} answered ${to}`);
     io.to(`user_${to}`).emit('call:answered', {
       from: socket.userId,
       answer: answer
     });
   });
   
-  socket.on('call:end', (data) => {
-    const { to } = data;
-    if (to) io.to(`user_${to}`).emit('call:ended', { from: socket.userId });
-  });
-  
   socket.on('call:ice', (data) => {
     const { to, candidate } = data;
+    console.log(`🧊 ICE from ${socket.userId} to ${to}`);
     io.to(`user_${to}`).emit('call:ice', {
       from: socket.userId,
       candidate: candidate
     });
+  });
+  
+  socket.on('call:end', (data) => {
+    const { to } = data;
+    console.log(`❌ ${socket.userId} ended call with ${to}`);
+    if (to) {
+      io.to(`user_${to}`).emit('call:ended', { from: socket.userId });
+    }
   });
   
   socket.on('disconnect', () => {
