@@ -360,7 +360,17 @@
                         });
                     }
                 };
-                
+                peerConnection.oniceconnectionstatechange = () => {
+                    logMessage(`ICE состояние: ${peerConnection.iceConnectionState}`, 'info');
+                    if (peerConnection.iceConnectionState === 'connected' || 
+                        peerConnection.iceConnectionState === 'completed') {
+                        logMessage('✅ Соединение установлено!', 'success');
+                    }
+                    if (peerConnection.iceConnectionState === 'failed' ||
+                        peerConnection.iceConnectionState === 'disconnected') {
+                        logMessage('❌ Проблема с соединением', 'error');
+                }
+                };
                 // Создаем оффер
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
