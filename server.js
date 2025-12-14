@@ -12,7 +12,13 @@ const io = new Server(server, {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Корневой маршрут
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Раздаем статические файлы из текущей папки
+app.use(express.static(__dirname));
 
 // Сигнальный сервер для звонков
 io.on('connection', (socket) => {
